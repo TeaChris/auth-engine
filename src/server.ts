@@ -83,15 +83,18 @@ export const createServer = (): Application => {
       // ─── Compression ──────────────────────────────────────────────────────────
       app.use(compressionMiddleware)
 
-      // ─── Global Input Sanitization (XSS Prevention) ───────────────────────────
-      app.use(sanitizationMiddleware)
-
       // ─── Body Parsing ──────────────────────────────────────────────────────────
+      // Must come BEFORE sanitization so req.body is populated
       app.use(express.json({ limit: '10kb' }))
       app.use(express.urlencoded({ extended: true, limit: '10kb' }))
       app.use(cookieParser())
 
+      // ─── Global Input Sanitization (XSS Prevention) ───────────────────────────
+      // Runs AFTER body parsing (req.body is now populated), BEFORE routing
+      app.use(sanitizationMiddleware)
+
       // ─── CSRF Protection (Double-Submit Cookie Pattern) ───────────────────────
+      // Runs after cookieParser (needs cookies) and before routes
       app.use(doubleCsrfProtection)
 
       // ─── HTTP Parameter Pollution (HPP) ───────────────────────────────────────
