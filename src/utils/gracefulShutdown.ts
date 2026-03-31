@@ -10,6 +10,15 @@ const shutdown = async (
 ): Promise<void> => {
       logger.info({ signal }, 'Graceful shutdown initiated. Stopping server...')
 
+      // ─── Hard-kill timeout (if server.close() stalls) ─────────────────────────
+      setTimeout(() => {
+            logger.error(
+                  { timeoutMs: SHUTDOWN_TIMEOUT_MS },
+                  'Shutdown timeout exceeded. Forcing exit.',
+            )
+            process.exit(1)
+      }, SHUTDOWN_TIMEOUT_MS).unref()
+
       // Stop accepting new HTTP connections
       server.close(async () => {
             logger.info('HTTP server closed')
@@ -33,12 +42,11 @@ const shutdown = async (
                   process.exit(1)
             }
       })
-
-      // Hard kill logic (unchanged)
 }
 
 /**
- * Registers shutdown hooks.
+ * Registers SIGTERM, SIGINT, uncaughtException, and unhandledRejection
+ * handlers on the process for clean, safe shutdown.
  */
 export const registerGracefulShutdown = (
       server: Server,
@@ -46,5 +54,14 @@ export const registerGracefulShutdown = (
 ): void => {
       process.on('SIGTERM', () => shutdown('SIGTERM', server, cleanup))
       process.on('SIGINT', () => shutdown('SIGINT', server, cleanup))
-      // Handle uncaught errors similarly
+
+      process.on('uncaughtException', (err) => {
+            logger.fatal({ err }, 'Uncaught exception — initiating emergency shutdown')
+            shutdown('uncaughtException', server, cleanup)
+      })
+
+      process.on('unhandledRejection', (reason) => {
+            logger.fatal({ reason }, 'Unhandled promise rejection — initiating emergency shutdown')
+            shutdown('unhandledRejection', server, cleanup)
+      })
 }
