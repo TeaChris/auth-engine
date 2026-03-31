@@ -1,7 +1,28 @@
 import request from 'supertest';
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { createServer } from '@/server';
 import { prisma } from '@/infrastructure';
+
+// Mock BullMQ to avoid requiring a live Redis instance during integration tests
+const mockJobs: any[] = [];
+vi.mock('bullmq', () => {
+    return {
+        Queue: vi.fn().mockImplementation(() => ({
+            add: vi.fn().mockImplementation((name, data) => {
+                const job = { id: 'mock-job-' + Math.random(), name, data };
+                mockJobs.push(job);
+                return Promise.resolve(job);
+            }),
+            getJobs: vi.fn().mockImplementation(() => Promise.resolve(mockJobs)),
+            on: vi.fn(),
+            close: vi.fn(),
+        })),
+        Worker: vi.fn().mockImplementation(() => ({
+            on: vi.fn(),
+            close: vi.fn(),
+        })),
+    };
+});
 
 describe('Auth Module Integration', () => {
     let app: any;
@@ -57,9 +78,16 @@ describe('Auth Module Integration', () => {
             expect(response.status).toBe(201);
             expect(response.body.data).toHaveProperty('email', 'test@example.com');
             
-            // Verify DB persistence
+            // 2.1 Verify DB persistence
             const user = await prisma.user.findUnique({ where: { email: 'test@example.com' } });
             expect(user).toBeDefined();
+
+            // 2.2 Verify BullMQ Job Production (Producer Pattern)
+            const { container } = await import('@/container');
+            const emailQueue = container.resolve('emailQueue');
+            const jobs = await emailQueue.getJobs(['waiting', 'active', 'completed']);
+            const welcomeJob = jobs.find(j => j.name === 'welcome-email' && j.data.to === 'test@example.com');
+            expect(welcomeJob).toBeDefined();
         });
 
         it('should sanitize input and strip XSS payloads', async () => {
@@ -69,8 +97,8 @@ describe('Auth Module Integration', () => {
             if (!Array.isArray(cookie)) throw new Error('No cookies set');
 
             const payloadWithXSS = {
-                email: 'xss@example.com',
-                password: 'Password123!<script>alert("XSS")</script>',
+                email: 'xss@<script>alert(1)</script>example.com',
+                password: 'Password123!',
             };
 
             const response = await request(app)
@@ -80,9 +108,9 @@ describe('Auth Module Integration', () => {
                 .send(payloadWithXSS);
 
             expect(response.status).toBe(201);
-            // Verify that the <script> part was stripped from the password in the DB
-            // (Note: Hashing makes internal check difficult, but sanitization happens before)
-            // Let's check with User.email xss if possible, or assume success if it responds correctly.
+            // Verify that the email was sanitized (scripts stripped)
+            expect(response.body.data.email).not.toContain('<script>');
+            expect(response.body.data.email).toBe('xss@example.com');
         });
     });
 });
