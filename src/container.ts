@@ -1,17 +1,16 @@
 import {
-  createContainer,
-  asClass,
-  asValue,
-  InjectionMode,
-  AwilixContainer,
+      asValue,
+      asClass,
+      InjectionMode,
+      AwilixContainer,
+      createContainer,
 } from 'awilix'
-import type { PrismaClient } from '@prisma/client'
 import type { Logger } from 'pino'
 import type { Queue } from 'bullmq'
+import type { PrismaClient } from '@prisma/client'
+
 import { prisma, logger, createQueue } from '@/infrastructure'
-import { AuthRepository } from '@/modules/auth/auth.repository'
-import { AuthService } from '@/modules/auth/auth.service'
-import { EmailWorker } from '@/modules/notifications/email.worker'
+import { AuthRepository, AuthService, EmailWorker } from '@/modules'
 
 export interface AppCradle {
       // Infrastructure
