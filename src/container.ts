@@ -15,8 +15,8 @@ import { AuthRepository, AuthService, EmailWorker } from '@/modules'
 export interface AppCradle {
       // Infrastructure
       prisma: PrismaClient
-      logger: Logger
       emailQueue: Queue
+      logger: Logger
 
       // Domain modules
       authRepository: AuthRepository
