@@ -1,5 +1,6 @@
-import 'dotenv/config'
-import cluster from 'cluster'
+import './instrumentation';
+import 'dotenv/config';
+import cluster from 'cluster';
 import os from 'os'
 
 import { env } from '@/config'
@@ -12,6 +13,10 @@ const startServer = async (): Promise<void> => {
             // 1. Validate & connect infrastructure (fail-fast before serving any traffic)
             await connectDB()
             await connectRedis()
+
+            // 1.5. Resolve background workers to start listening
+            const { container } = await import('./container')
+            container.resolve('emailWorker')
 
             // 2. Compose the Express application
             const app = createServer()
