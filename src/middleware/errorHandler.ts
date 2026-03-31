@@ -1,34 +1,77 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError } from '@/core/errors/AppError';
-import { logger } from '@/infrastructure/logger/winston';
-import { env } from '@/config/env';
+import { ZodError } from 'zod';
+import { Prisma } from '@prisma/client';
+import { AppError } from '@/utils/AppError';
+import { logger } from '@/infrastructure/logger/pino';
 
+const isProd = process.env['NODE_ENV'] === 'production';
+
+/**
+ * Global error-handling middleware.
+ * - Never leaks stack traces in production
+ * - Handles AppError, ZodError, Prisma errors uniformly
+ * - Returns a consistent { success, statusCode, message, errors? } envelope
+ */
 export const globalErrorHandler = (
-  err: Error | AppError,
+  err: Error,
   req: Request,
   res: Response,
-  next: NextFunction
-) => {
-  let statusCode = 500;
-  let message = 'Internal Server Error';
+  _next: NextFunction,
+): void => {
+  const meta = { url: req.url, method: req.method };
 
-  if (err instanceof AppError) {
-    statusCode = err.statusCode;
-    message = err.message;
+  // ─── Zod Validation Errors ─────────────────────────────────────────────────
+  if (err instanceof ZodError) {
+    res.status(422).json({
+      success: false,
+      statusCode: 422,
+      message: 'Validation failed',
+      errors: err.errors.map((e) => ({ field: e.path.join('.'), message: e.message })),
+    });
+    return;
   }
 
-  // Log all non-operational and 500+ errors
-  if (!(err instanceof AppError) || err.statusCode >= 500) {
-    logger.error(`[${req.method}] ${req.url} >> ${err.message}`, { stack: err.stack });
-  } else {
-    logger.warn(`[${req.method}] ${req.url} >> ${err.message}`);
+  // ─── Known Operational Errors (AppError) ───────────────────────────────────
+  if (err instanceof AppError && err.isOperational) {
+    logger.warn({ ...meta, statusCode: err.statusCode }, err.message);
+    res.status(err.statusCode).json({
+      success: false,
+      statusCode: err.statusCode,
+      message: err.message,
+      errors: err.details ?? undefined,
+    });
+    return;
   }
 
-  res.status(statusCode).json({
+  // ─── Prisma Known Request Errors ──────────────────────────────────────────
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2002') {
+      res.status(409).json({ success: false, statusCode: 409, message: 'Resource already exists' });
+      return;
+    }
+    if (err.code === 'P2025') {
+      res.status(404).json({ success: false, statusCode: 404, message: 'Resource not found' });
+      return;
+    }
+  }
+
+  // ─── Unknown / Programmer Errors ──────────────────────────────────────────
+  logger.error({ ...meta, err }, 'Unhandled server error');
+  res.status(500).json({
     success: false,
-    error: {
-      message,
-      ...(env.NODE_ENV === 'development' && { stack: err.stack }),
-    },
+    statusCode: 500,
+    message: 'An unexpected error occurred',
+    ...(!isProd && { stack: err.stack }),
+  });
+};
+
+/**
+ * Catches requests to undefined routes.
+ */
+export const notFoundHandler = (req: Request, res: Response): void => {
+  res.status(404).json({
+    success: false,
+    statusCode: 404,
+    message: `Cannot ${req.method} ${req.url}`,
   });
 };
