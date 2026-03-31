@@ -1,6 +1,5 @@
 import { Queue, Worker, QueueOptions, WorkerOptions, Job, RedisOptions } from 'bullmq';
 import { logger } from '@/infrastructure';
-import { env } from '@/config';
 
 // ─── Redis Configuration ──────────────────────────────────────────────────
 // BullMQ requires a standard Redis connection or ioredis instance
