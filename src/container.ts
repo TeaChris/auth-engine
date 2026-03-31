@@ -1,33 +1,32 @@
 import {
-      createContainer,
-      asClass,
-      asValue,
-      InjectionMode,
-      AwilixContainer,
+  createContainer,
+  asClass,
+  asValue,
+  InjectionMode,
+  AwilixContainer,
 } from 'awilix'
 import type { PrismaClient } from '@prisma/client'
 import type { Logger } from 'pino'
-import { prisma } from '@/infrastructure/database/prisma'
-import { logger } from '@/infrastructure/logger'
+import type { Queue } from 'bullmq'
+import { prisma, logger, createQueue } from '@/infrastructure'
 import { AuthRepository } from '@/modules/auth/auth.repository'
 import { AuthService } from '@/modules/auth/auth.service'
+import { EmailWorker } from '@/modules/notifications/email.worker'
 
 export interface AppCradle {
-      // Infrastructure — registered as values (already-created singletons)
+      // Infrastructure
       prisma: PrismaClient
       logger: Logger
+      emailQueue: Queue
 
-      // Auth domain
+      // Domain modules
       authRepository: AuthRepository
       authService: AuthService
+      emailWorker: EmailWorker
 }
 
 /**
- * awilix DI container — CLASSIC injection mode (constructor parameter order matters).
- * Services are registered as singletons so they're only instantiated once.
- *
- * AuthRepository constructor: (prisma)
- * AuthService constructor:    (authRepository, logger)
+ * awilix DI container
  */
 const container: AwilixContainer<AppCradle> = createContainer<AppCradle>({
       injectionMode: InjectionMode.CLASSIC,
@@ -37,10 +36,12 @@ container.register({
       // ─── Infrastructure values ─────────────────────────────────────────────────
       prisma: asValue(prisma),
       logger: asValue(logger),
+      emailQueue: asValue(createQueue('email-queue')),
 
-      // ─── Auth domain ──────────────────────────────────────────────────────────
+      // ─── Domain modules ───────────────────────────────────────────────────────
       authRepository: asClass(AuthRepository).singleton(),
       authService: asClass(AuthService).singleton(),
+      emailWorker: asClass(EmailWorker).singleton(),
 })
 
 export { container }
