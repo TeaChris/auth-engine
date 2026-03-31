@@ -13,7 +13,7 @@ import {
       notFoundHandler,
       sanitizationMiddleware,
       doubleCsrfProtection,
-      generateToken,
+      generateCsrfToken,
 } from '@/middleware'
 import { authRouter, healthRouter } from '@/modules'
 
@@ -108,7 +108,7 @@ export const createServer = (): Application => {
 
       // ─── CSRF Token Endpoint ──────────────────────────────────────────────────
       app.get('/csrf-token', (req, res) => {
-            res.json({ token: generateToken(req, res) })
+            res.json({ token: generateCsrfToken(req, res) })
       })
 
       // ─── Routes ───────────────────────────────────────────────────────────────
