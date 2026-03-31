@@ -1,5 +1,6 @@
 import argon2 from 'argon2'
 import type { Logger } from 'pino'
+import type { Queue } from 'bullmq'
 import { SignJWT, jwtVerify, JWTPayload } from 'jose'
 
 import { env } from '@/config'
@@ -7,6 +8,7 @@ import { cache } from '@/infrastructure'
 import { AppError } from '@/utils/AppError'
 import type { AuthRepository } from './auth.repository'
 import type { RegisterDto, LoginDto } from './auth.schema'
+import type { EmailJobData } from '../notifications/email.worker'
 
 const ARGON2_OPTIONS: argon2.Options & { raw?: false } = {
       type: argon2.argon2id,
@@ -30,6 +32,7 @@ export class AuthService {
       constructor(
             private readonly authRepository: AuthRepository,
             private readonly logger: Logger,
+            private readonly emailQueue: Queue,
       ) {
             this.accessSecret = new TextEncoder().encode(env.JWT_ACCESS_SECRET)
             this.refreshSecret = new TextEncoder().encode(
@@ -49,6 +52,17 @@ export class AuthService {
             const user = await this.authRepository.create({
                   email: dto.email,
                   password: hashedPassword,
+            })
+
+            // ─── Producer Pattern: Enqueue Welcome Email Job ──────────────────
+            // Decouple user registration from notification delivery
+            this.emailQueue.add('welcome-email', {
+                  to: user.email,
+                  subject: 'Welcome to the System!',
+                  body: `Hi ${user.email}, your registration was successful.`,
+            } as EmailJobData).catch(err => {
+                  // Log queue failures but don't fail the registration request
+                  this.logger.error({ err, userId: user.id }, '❌ Failed to enqueue welcome email')
             })
 
             this.logger.info({ userId: user.id }, 'New user registered')
