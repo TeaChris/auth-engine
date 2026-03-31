@@ -1,40 +1,85 @@
 import express, { Application } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import morgan from 'morgan';
-import { globalErrorHandler } from '@/middleware/errorHandler';
+import hpp from 'hpp';
+import cookieParser from 'cookie-parser';
+import { env } from '@/config/env';
+import { httpLogger } from '@/infrastructure/logger/pino';
+import { globalErrorHandler, notFoundHandler } from '@/middleware/errorHandler';
+import { compressionMiddleware } from '@/middleware/compression';
+import { generalRateLimiter } from '@/middleware/rateLimiter';
 import { healthRouter } from '@/modules/health/health.controller';
+import { authRouter } from '@/modules/auth/auth.controller';
 
 export const createServer = (): Application => {
   const app = express();
 
-  // 1. Security Headers
-  app.use(helmet());
+  // ─── Trust Proxy (required for correct IP behind load balancers / nginx) ───
+  app.set('trust proxy', 1);
 
-  // 2. CORS
+  // ─── Disable fingerprinting ────────────────────────────────────────────────
+  app.disable('x-powered-by');
+
+  // ─── Security Headers (Helmet) ────────────────────────────────────────────
   app.use(
-    cors({
-      origin: ['http://localhost:3000'], // In production, add valid origins
-      credentials: true,
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameSrc: ["'none'"],
+          upgradeInsecureRequests: [],
+        },
+      },
+      hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+      crossOriginEmbedderPolicy: true,
     }),
   );
 
-  // 3. Body Parsing
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // ─── CORS (strict whitelist from env) ─────────────────────────────────────
+  const allowedOrigins = env.ALLOWED_ORIGINS.split(',').map((o) => o.trim());
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow server-to-server requests with no Origin header
+        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error(`CORS policy: origin '${origin}' is not allowed`));
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
+    }),
+  );
 
-  // 4. Logging
-  app.use(morgan('dev'));
+  // ─── Compression ──────────────────────────────────────────────────────────
+  app.use(compressionMiddleware);
 
-  // 5. Routes Definition
+  // ─── Body Parsing (with size limits to prevent oversized payload attacks) ──
+  app.use(express.json({ limit: '10kb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+  app.use(cookieParser());
+
+  // ─── HTTP Parameter Pollution (HPP) ───────────────────────────────────────
+  app.use(hpp());
+
+  // ─── Structured HTTP Logging ──────────────────────────────────────────────
+  app.use(httpLogger);
+
+  // ─── General Rate Limiting ────────────────────────────────────────────────
+  app.use(generalRateLimiter);
+
+  // ─── Routes ───────────────────────────────────────────────────────────────
   app.use('/health', healthRouter);
+  app.use('/api/v1/auth', authRouter);
 
-  // 6. Global 404 handler
-  app.use((req, res, next) => {
-    res.status(404).json({ success: false, error: 'Route not found' });
-  });
-
-  // 7. Global Error Handler
+  // ─── 404 & Global Error Handler ───────────────────────────────────────────
+  app.use(notFoundHandler);
   app.use(globalErrorHandler);
 
   return app;
