@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { execSync } from 'child_process';
 import { prisma } from '@/infrastructure';
 import { afterAll, beforeAll } from 'vitest';
