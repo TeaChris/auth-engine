@@ -8,7 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Example User model for future Auth structure
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -17,7 +16,41 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ─── Email Verification ──────────────────────────────────────────────────────
+  emailVerifiedAt        DateTime?
+  emailVerificationToken String?   @unique
+
+  // ─── Password Recovery ───────────────────────────────────────────────────────
+  passwordResetToken     String?   @unique
+  passwordResetExpiresAt DateTime?
+
+  // ─── Account Lockout ─────────────────────────────────────────────────────────
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
+  // ─── Relations ───────────────────────────────────────────────────────────────
+  auditLogs AuditLog[]
+
   @@map("users")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+// Persists every critical auth event for compliance and investigations.
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  // nullable — login failures for non-existent users still get logged
+  action    String   // e.g. "LOGIN_SUCCESS", "LOGIN_FAILURE", "PASSWORD_RESET_REQUEST"
+  ip        String?
+  userAgent String?
+  metadata  Json?    // arbitrary extra context (e.g. reason for failure)
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 enum Role {
