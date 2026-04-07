@@ -1,5 +1,5 @@
 import type { Logger } from 'pino'
-import type { PrismaClient } from '@prisma/client'
+import { type PrismaClient, Prisma } from '@prisma/client'
 import type { AuditEventInput } from './audit.types'
 
 /**
@@ -44,7 +44,10 @@ export class AuditService {
           action: event.action,
           ip: event.ip ?? null,
           userAgent: event.userAgent ?? null,
-          metadata: event.metadata ?? undefined,
+          // Prisma's Json field requires InputJsonValue — cast from Record<string, unknown>
+          metadata: event.metadata
+            ? (event.metadata as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         },
       })
       .catch((err: unknown) => {
