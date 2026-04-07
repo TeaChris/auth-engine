@@ -7,6 +7,7 @@ export const env = cleanEnv(process.env, {
             default: 'development',
       }),
       PORT: port({ default: 8000 }),
+      APP_URL: str({ default: 'http://localhost:8000' }),
 
       // ─── Database ─────────────────────────────────────────────────────────────
       DATABASE_URL: str(),
@@ -20,6 +21,11 @@ export const env = cleanEnv(process.env, {
       JWT_ACCESS_EXPIRES_IN: str({ default: '15m' }),
       JWT_REFRESH_EXPIRES_IN: str({ default: '7d' }),
 
+      // ─── CSRF ─────────────────────────────────────────────────────────────────
+      // Must be a different secret from the JWT secrets.
+      // Generate with: openssl rand -hex 64
+      CSRF_SECRET: str(),
+
       // ─── CORS ─────────────────────────────────────────────────────────────────
       ALLOWED_ORIGINS: str({ default: 'http://localhost:3000' }),
 
@@ -27,6 +33,17 @@ export const env = cleanEnv(process.env, {
       RATE_LIMIT_WINDOW_MS: num({ default: 900000 }), // 15 minutes
       RATE_LIMIT_MAX: num({ default: 100 }),
       AUTH_RATE_LIMIT_MAX: num({ default: 10 }),
+
+      // ─── Account Lockout ──────────────────────────────────────────────────────
+      LOGIN_MAX_ATTEMPTS: num({ default: 5 }),
+      ACCOUNT_LOCKOUT_MINUTES: num({ default: 15 }),
+
+      // ─── Email / SMTP ─────────────────────────────────────────────────────────
+      SMTP_HOST: str({ default: 'smtp.ethereal.email' }),
+      SMTP_PORT: num({ default: 587 }),
+      SMTP_USER: str({ default: '' }),
+      SMTP_PASS: str({ default: '' }),
+      SMTP_FROM: str({ default: 'Auth System <no-reply@example.com>' }),
 
       // ─── Cluster ──────────────────────────────────────────────────────────────
       CLUSTER_ENABLED: bool({ default: false }),
