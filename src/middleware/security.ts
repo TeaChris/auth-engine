@@ -8,11 +8,9 @@ import { logger } from '@/infrastructure'
 // ─── CSRF Protection ─────────────────────────────────────────────────────────
 // Double-CSRF pattern (cookie + header).
 // Uses a DEDICATED CSRF_SECRET — never share this with JWT secrets.
-export const {
-  invalidCsrfTokenError,
-  generateCsrfToken,
-  doubleCsrfProtection,
-} = doubleCsrf({
+// `invalidCsrfTokenError` is NOT re-exported: its underlying HttpError type
+// from @types/http-errors is not a direct dep and causes TS4023.
+const { invalidCsrfTokenError: _unused, generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
   getSecret: () => env.CSRF_SECRET,
   getSessionIdentifier: (req) => req.ip ?? 'unknown',
   cookieName: 'x-csrf-token',
@@ -24,6 +22,8 @@ export const {
   size: 64,
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
 })
+void _unused // suppress unused-variable lint
+export { generateCsrfToken, doubleCsrfProtection }
 
 // ─── Global Input Sanitization ───────────────────────────────────────────────
 // JSDOM window is typed; DOMPurify accepts `Window & typeof globalThis`.
