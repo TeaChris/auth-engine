@@ -1,11 +1,11 @@
 import { logger } from '@/infrastructure'
 
 import { NodeSDK } from '@opentelemetry/sdk-node'
-import { resourceFromAttributes } from '@opentelemetry/resources'
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions'
 import { PrismaInstrumentation } from '@prisma/instrumentation'
+import { resourceFromAttributes } from '@opentelemetry/resources'
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions'
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node'
 
 // Define the service resource
