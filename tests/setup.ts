@@ -1,7 +1,7 @@
-import 'dotenv/config';
-import { execSync } from 'child_process';
-import { prisma } from '@/infrastructure';
-import { afterAll, beforeAll } from 'vitest';
+import 'dotenv/config'
+import { execSync } from 'child_process'
+import { prisma } from '@/infrastructure'
+import { afterAll, beforeAll } from 'vitest'
 
 /**
  * Global setup for integration tests.
@@ -10,15 +10,14 @@ import { afterAll, beforeAll } from 'vitest';
  */
 beforeAll(async () => {
   try {
-    console.log('🧪 Setting up test database...');
-    // Sync schema to the database (use push for speed in tests)
-    execSync('npx prisma db push --skip-generate', { stdio: 'inherit' });
-    console.log('✅ Test database ready');
+    process.stdout.write('🧪 Setting up test database...\n')
+    execSync('npx prisma db push --skip-generate', { stdio: 'inherit' })
+    process.stdout.write('✅ Test database ready\n')
   } catch (error) {
-    console.error('❌ Failed to setup test database:', error);
-    process.exit(1);
+    process.stderr.write(`❌ Failed to setup test database: ${String(error)}\n`)
+    process.exit(1)
   }
-});
+})
 
 /**
  * Global teardown for integration tests.
@@ -26,17 +25,17 @@ beforeAll(async () => {
  */
 afterAll(async () => {
   try {
-    // Optional: Clean up all tables
-    // const tablenames = await prisma.$queryRaw<Array<{ tablename: string }>>`SELECT tablename FROM pg_tables WHERE schemaname='public'`;
-    // for (const { tablename } of tablenames) {
+    // Uncomment to wipe tables between full test runs:
+    // const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
+    //   SELECT tablename FROM pg_tables WHERE schemaname='public'`
+    // for (const { tablename } of tables) {
     //   if (tablename !== '_prisma_migrations') {
-    //     await prisma.$executeRawUnsafe(`TRUNCATE TABLE "public"."${tablename}" CASCADE;`);
+    //     await prisma.$executeRawUnsafe(`TRUNCATE TABLE "public"."${tablename}" CASCADE;`)
     //   }
     // }
-
-    await prisma.$disconnect();
-    console.log('🧪 Test database disconnected');
+    await prisma.$disconnect()
+    process.stdout.write('🧪 Test database disconnected\n')
   } catch (error) {
-    console.error('❌ Error during test teardown:', error);
+    process.stderr.write(`❌ Error during test teardown: ${String(error)}\n`)
   }
-});
+})
