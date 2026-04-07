@@ -12,7 +12,7 @@ export const generalRateLimiter = rateLimit({
             message: 'Too many requests from this IP. Please try again later.',
       },
       skip: (req) => req.path === '/health', // health checks bypass rate limiting
-      keyGenerator: (req) => (req.ip as string) || 'unknown',
+      keyGenerator: (req) => req.ip ?? req.socket.remoteAddress ?? 'unknown',
 })
 
 /** Strict auth rate limiter — applied only to auth endpoints */
@@ -25,5 +25,5 @@ export const authRateLimiter = rateLimit({
             success: false,
             message: 'Too many authentication attempts. Please try again in 15 minutes.',
       },
-      keyGenerator: (req) => (req.ip as string) || 'unknown',
+      keyGenerator: (req) => req.ip ?? req.socket.remoteAddress ?? 'unknown',
 })
