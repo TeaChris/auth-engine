@@ -7,13 +7,13 @@ import hpp from 'hpp'
 import { env } from '@/config'
 import { httpLogger } from '@/infrastructure'
 import {
-      compressionMiddleware,
+      notFoundHandler,
+      generateCsrfToken,
       generalRateLimiter,
       globalErrorHandler,
-      notFoundHandler,
-      sanitizationMiddleware,
       doubleCsrfProtection,
-      generateCsrfToken,
+      compressionMiddleware,
+      sanitizationMiddleware,
 } from '@/middleware'
 import { authRouter, healthRouter } from '@/modules'
 
