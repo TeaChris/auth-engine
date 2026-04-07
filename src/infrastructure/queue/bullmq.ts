@@ -1,60 +1,74 @@
-import { Queue, Worker, QueueOptions, WorkerOptions, Job, RedisOptions } from 'bullmq';
-import { logger } from '@/infrastructure';
+import { Queue, Worker, type QueueOptions, type WorkerOptions, type Job, type RedisOptions } from 'bullmq'
+import { logger } from '@/infrastructure'
 
-// ─── Redis Configuration ──────────────────────────────────────────────────
-// BullMQ requires a standard Redis connection or ioredis instance
-const redisConnection: RedisOptions = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-};
+// ─── Redis Configuration ──────────────────────────────────────────────────────
+// Parse the validated REDIS_URL rather than reading raw env vars directly.
+// This ensures BullMQ uses the same Redis instance as every other subsystem.
+const buildRedisConnection = (): RedisOptions => {
+  const redisUrl = process.env['REDIS_URL'] ?? 'redis://localhost:6379'
+  try {
+    const url = new URL(redisUrl)
+    return {
+      host: url.hostname,
+      port: Number(url.port) || 6379,
+      ...(url.password ? { password: decodeURIComponent(url.password) } : {}),
+      ...(url.pathname && url.pathname !== '/' ? { db: Number(url.pathname.slice(1)) } : {}),
+    }
+  } catch {
+    logger.warn({ redisUrl }, 'Could not parse REDIS_URL; falling back to localhost:6379')
+    return { host: 'localhost', port: 6379 }
+  }
+}
 
-// ─── Retry Strategy ────────────────────────────────────────────────────────
-// Exponential backoff: 1s, 2s, 4s, 8s...
+const redisConnection: RedisOptions = buildRedisConnection()
+
+// ─── Retry Strategy ───────────────────────────────────────────────────────────
+// Exponential backoff: 1 s, 2 s, 4 s (capped at 3 attempts)
 export const defaultJobOptions = {
   attempts: 3,
   backoff: {
-    type: 'exponential',
+    type: 'exponential' as const,
     delay: 1000,
   },
   removeOnComplete: true,
   removeOnFail: false,
-};
+} as const
 
 /**
- * Base configuration for BullMQ queues.
+ * Factory that creates a typed BullMQ Queue wired to the shared Redis connection.
  */
-export const createQueue = (name: string, options?: Partial<QueueOptions>) => {
-  return new Queue(name, {
+export const createQueue = <T = unknown>(
+  name: string,
+  options?: Partial<QueueOptions>,
+): Queue<T> =>
+  new Queue<T>(name, {
     connection: redisConnection,
     defaultJobOptions,
     ...options,
-  });
-};
+  })
 
 /**
- * Base configuration for BullMQ workers.
+ * Factory that creates a BullMQ Worker with structured logging on lifecycle events.
  */
-export const createWorker = (
+export const createWorker = <T = unknown>(
   name: string,
-  processor: (job: Job) => Promise<void>,
-  options?: Partial<WorkerOptions>
-) => {
-  const worker = new Worker(name, processor, {
+  processor: (job: Job<T>) => Promise<void>,
+  options?: Partial<WorkerOptions>,
+): Worker<T> => {
+  const worker = new Worker<T>(name, processor, {
     connection: redisConnection,
     ...options,
-  });
+  })
 
-  worker.on('active', (job) => {
-    logger.info({ queue: name, jobId: job.id }, `🚀 Job ${job.id} started`);
-  });
+  worker.on('active', (job) =>
+    logger.info({ queue: name, jobId: job.id }, `Job ${job.id} started`),
+  )
+  worker.on('completed', (job) =>
+    logger.info({ queue: name, jobId: job.id }, `Job ${job.id} completed`),
+  )
+  worker.on('failed', (job, err) =>
+    logger.error({ queue: name, jobId: job?.id, err }, `Job ${job?.id} failed`),
+  )
 
-  worker.on('completed', (job) => {
-    logger.info({ queue: name, jobId: job.id }, `✅ Job ${job.id} completed`);
-  });
-
-  worker.on('failed', (job, err) => {
-    logger.error({ queue: name, jobId: job?.id, error: err.message }, `❌ Job ${job?.id} failed`);
-  });
-
-  return worker;
-};
+  return worker
+}
