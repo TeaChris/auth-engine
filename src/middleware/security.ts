@@ -9,10 +9,11 @@ import { logger } from '@/infrastructure';
 // Double-CSRF pattern (cookie + header)
 export const {
   invalidCsrfTokenError,
-  generateToken,
+  generateCsrfToken,
   doubleCsrfProtection,
 } = doubleCsrf({
-  getSecret: () => env.JWT_ACCESS_SECRET, // Use a secret from env
+  getSecret: () => env.JWT_ACCESS_SECRET,
+  getSessionIdentifier: (req) => req.ip || 'unknown', // Use IP as identifier for stateless auth
   cookieName: 'x-csrf-token',
   cookieOptions: {
     httpOnly: true,
@@ -25,7 +26,7 @@ export const {
 
 // ─── Global Input Sanitization ─────────────────────────────────────────────
 const window = new JSDOM('').window;
-const DOMPurify = createDOMPurify(window as unknown as Window);
+const DOMPurify = createDOMPurify(window as any);
 
 /**
  * Recursively sanitizes strings in an object using DOMPurify.
