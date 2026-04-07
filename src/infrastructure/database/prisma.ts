@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, Prisma } from '@prisma/client'
 import { logger } from '@/infrastructure'
 
 const MAX_RETRIES = 3
@@ -26,14 +26,16 @@ if (process.env['NODE_ENV'] !== 'production') {
       globalForPrisma.prisma = prisma
 }
 
-// Forward Prisma events to Pino
-;(prisma as any).$on('query', (e: any) => {
+// ─── Forward Prisma events to Pino ───────────────────────────────────────────
+// Use Prisma's typed event system — no `any` casts needed.
+prisma.$on('query' as Parameters<typeof prisma.$on>[0], (e: Prisma.QueryEvent) => {
       logger.debug(
             { query: e.query, duration: `${e.duration}ms` },
             'Prisma query',
       )
 })
-;(prisma as any).$on('error', (e: any) => {
+
+prisma.$on('error' as Parameters<typeof prisma.$on>[0], (e: Prisma.LogEvent) => {
       logger.error({ message: e.message }, 'Prisma error')
 })
 
