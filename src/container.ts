@@ -10,7 +10,10 @@ import type { Queue } from 'bullmq'
 import type { PrismaClient } from '@prisma/client'
 
 import { prisma, logger, createQueue } from '@/infrastructure'
-import { AuthRepository, AuthService, AuditService, EmailWorker } from '@/modules'
+import { AuthRepository } from './modules/auth/auth.repository'
+import { AuthService } from './modules/auth/auth.service'
+import { AuditService } from './modules/auth/audit.service'
+import { EmailWorker } from './modules/notifications/email.worker'
 
 /**
  * AppCradle — typed registry of every dependency in the DI container.
