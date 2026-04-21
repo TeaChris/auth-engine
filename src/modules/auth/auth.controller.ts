@@ -4,7 +4,7 @@ import { env } from '@/config'
 import { asyncHandler } from '@/utils'
 import { container } from '@/container'
 import type { AuthService } from './auth.service'
-import { authRateLimiter, validate } from '@/middleware'
+import { authRateLimiter, validate, authenticate } from '@/middleware'
 import {
   LoginSchema,
   RegisterSchema,
@@ -115,19 +115,21 @@ router.post(
 )
 
 // ─── GET /api/v1/auth/me ─────────────────────────────────────────────────────
-// Requires a valid access token (protect with authenticate middleware in production)
+// Now PROTECTED: requires a valid JWT access token.
+// The authenticate middleware populates req.user.
 router.get(
   '/me',
+  authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const authService = container.resolve<AuthService>('authService')
-    // NOTE: In a full implementation, req.user.id would be set by an
-    // authenticate middleware (JWT guard). This stub reads from query for demo.
-    const userId = req.query['userId'] as string | undefined
-    if (!userId) {
+    
+    // Safety check (req.user is guaranteed by middleware but for TS completeness)
+    if (!req.user) {
       res.status(401).json({ success: false, message: 'Unauthorized' })
       return
     }
-    const user = await authService.getMe(userId)
+
+    const user = await authService.getMe(req.user.id)
     res.status(200).json({ success: true, data: { user } })
   }),
 )
@@ -151,6 +153,7 @@ router.post(
 // ─── POST /api/v1/auth/reset-password ────────────────────────────────────────
 router.post(
   '/reset-password',
+  authRateLimiter,
   validate({ body: ResetPasswordSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     const authService = container.resolve<AuthService>('authService')
@@ -165,6 +168,7 @@ router.post(
 // ─── GET /api/v1/auth/verify-email/:token ─────────────────────────────────────
 router.get(
   '/verify-email/:token',
+  authRateLimiter,
   validate({ params: VerifyEmailSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     const authService = container.resolve<AuthService>('authService')
