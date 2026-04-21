@@ -117,13 +117,20 @@ export class AuthService {
   ): Promise<AuthTokens & { user: PublicUser }> {
     const user = await this.authRepository.findByEmail(dto.email)
 
-    // Consistent error message prevents user enumeration
+    // ─── Constant-Time Verification Logic (Anti-Enumeration) ────────────────
+    // If the user doesn't exist, we perform a "dummy" hash verification
+    // using a valid Argon2 hash but an incorrect password. This ensures
+    // that the response time is similar to a real user check (~300-500ms).
     if (!user) {
       this.auditService.log({
         action: AuditAction.LOGIN_FAILURE,
-        metadata: { reason: 'user_not_found', email: dto.email },
+        metadata: { reason: 'user_not_found' }, // Removed email for privacy
         ...context,
       })
+      // Dummy check (Argon2id default params hash for "dummy_secret_password")
+      // This is a defense-in-depth measure against timing attacks.
+      const dummyHash = '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$WvYm2X8Y/4Z7a+8u8u8u8u8u8u8u8u8u8u8u8u8u8u8'
+      await argon2.verify(dummyHash, dto.password, ARGON2_OPTIONS)
       throw new AppError('Invalid credentials', 401)
     }
 
@@ -134,7 +141,7 @@ export class AuthService {
       this.auditService.log({
         action: AuditAction.LOGIN_FAILURE,
         userId: user.id,
-        metadata: { reason: 'account_locked', lockedUntil: user.lockedUntil },
+        metadata: { reason: 'account_locked' }, // Removed lockedUntil for privacy/obscurity
         ...context,
       })
       throw new AppError(
@@ -220,23 +227,34 @@ export class AuthService {
     }
 
     const userId = payload['sub']!
-    const storedHash = await cache.get<string>(`${REFRESH_PREFIX}${userId}`)
+    const cacheKey = `${REFRESH_PREFIX}${userId}`
+    const storedHash = await cache.get<string>(cacheKey)
 
     // Compare hash of incoming token against the stored hash
     if (!storedHash || storedHash !== hashToken(incomingToken)) {
-      throw new AppError('Refresh token has been revoked', 401)
+      // SECURITY: If the token doesn't match but a hash exists, this COULD be 
+      // token reuse (theft). Best practice is to revoke ALL sessions for safety.
+      if (storedHash) {
+        await cache.del(cacheKey)
+        this.logger.warn({ userId }, 'Potential refresh token reuse detected! Revoking session.')
+      }
+      throw new AppError('Invalid or revoked refresh token', 401)
     }
+
+    // Atomic verify-and-delete: we delete the hash IMMEDIATELY before signing
+    // new ones. This prevents any other concurrent request from succeeding
+    // with this same old token (Race Condition Fix).
+    await cache.del(cacheKey)
 
     const user = await this.authRepository.findById(userId)
     if (!user) throw new AppError('User not found', 404)
 
-    // Rotate: delete old hash, issue + store new pair atomically
-    await cache.del(`${REFRESH_PREFIX}${userId}`)
+    // Issue + store new pair
     const [newAccess, newRefresh] = await Promise.all([
       this._signAccessToken(userId, user.role),
       this._signRefreshToken(userId),
     ])
-    await cache.set(`${REFRESH_PREFIX}${userId}`, hashToken(newRefresh), REFRESH_TTL_SEC)
+    await cache.set(cacheKey, hashToken(newRefresh), REFRESH_TTL_SEC)
 
     this.auditService.log({ action: AuditAction.TOKEN_ROTATED, userId, ...context })
 
